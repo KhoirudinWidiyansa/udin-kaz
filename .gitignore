@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Env files
+.env
+.env.local
+.env*.local
+
+# Google credentials (NEVER commit these!)
+credentials.json
+token.json
+
+# PWA generated files
+public/sw.js
+public/workbox-*.js
+public/worker-*.js
+
+# Temp/processing files
+.tmp/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+.vercel
