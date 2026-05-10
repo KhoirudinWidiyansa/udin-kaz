@@ -4,12 +4,14 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useInView } from 'react-intersection-observer'
 import type { Transaction } from '@/lib/db'
 import TransactionForm from './TransactionForm'
+import { KATEGORI_LIST } from '@/lib/validators'
 
 interface DashboardData {
   totalPengeluaran: number
   transaksi: Transaction[]
   totalCount: number
   hasMore: boolean
+  categorySummary: { kategori: string; total: number }[]
 }
 
 interface DashboardProps {
@@ -45,10 +47,13 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
 
   // Filters State
   const [showFilters, setShowFilters] = useState(false)
+  const [showAnalysis, setShowAnalysis] = useState(false)
   const [sortDate, setSortDate] = useState<'desc' | 'asc'>('desc')
-  const [filterNama, setFilterNama] = useState('')
+  const [sortNominal, setSortNominal] = useState<'desc' | 'asc' | ''>('')
   const [filterKategori, setFilterKategori] = useState('')
-  const [filterBulan, setFilterBulan] = useState('') // format 'YYYY-MM'
+  const [filterBulan, setFilterBulan] = useState(() => new Date().toISOString().substring(0, 7)) // format 'YYYY-MM'
+  const [minNominal, setMinNominal] = useState('')
+  const [maxNominal, setMaxNominal] = useState('')
 
   // Delete state
   const [deletingId, setDeletingId] = useState<number | null>(null)
@@ -70,9 +75,11 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
   const fetchData = useCallback(async (targetPage: number, replace: boolean = false) => {
     const params = new URLSearchParams({ page: String(targetPage) })
     if (filterBulan) params.set('bulan', filterBulan)
-    if (filterNama) params.set('nama', filterNama)
     if (filterKategori) params.set('kategori', filterKategori)
+    if (minNominal) params.set('minNominal', minNominal)
+    if (maxNominal) params.set('maxNominal', maxNominal)
     if (sortDate) params.set('sortDate', sortDate)
+    if (sortNominal) params.set('sortNominal', sortNominal)
     
     const res = await fetch(`/api/transactions?${params}`)
     if (res.ok) {
@@ -81,11 +88,12 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
         totalCount: fresh.totalCount,
         hasMore: fresh.hasMore,
         totalPengeluaran: fresh.totalPengeluaran,
+        categorySummary: fresh.categorySummary,
         transaksi: replace ? fresh.transaksi : [...prev.transaksi, ...fresh.transaksi]
       }))
       setPage(targetPage)
     }
-  }, [filterBulan, filterNama, filterKategori, sortDate])
+  }, [filterBulan, filterKategori, minNominal, maxNominal, sortDate, sortNominal])
 
   // Filter Change Debounce
   useEffect(() => {
@@ -98,7 +106,7 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
       fetchData(1, true).finally(() => setIsRefreshing(false))
     }, 300)
     return () => clearTimeout(timeoutId)
-  }, [fetchData])
+  }, [fetchData, sortNominal, minNominal, maxNominal])
 
   // Infinite Scroll Trigger
   useEffect(() => {
@@ -128,6 +136,7 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>(initialMonths);
+    if (filterBulan) months.add(filterBulan);
     if (data?.transaksi) {
       data.transaksi.forEach(t => {
         if (t.tanggal) {
@@ -138,7 +147,7 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
     }
 
     return Array.from(months).sort((a, b) => b.localeCompare(a));
-  }, [data?.transaksi, initialMonths]);
+  }, [data?.transaksi, initialMonths, filterBulan]);
 
   // Compute total pengeluaran
   const totalKeluar = data.transaksi.reduce(
@@ -233,22 +242,55 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
         </div>
       </section>
 
+      {/* Analysis Overlay */}
+      {showAnalysis && (
+        <>
+          <div className="overlay" onClick={() => setShowAnalysis(false)} />
+          <div className="sheet-modal" style={{ height: 'auto', paddingBottom: '32px' }}>
+            <div className="sheet-handle" onClick={() => setShowAnalysis(false)} />
+            <h2 className="sheet-title">Analisis Pengeluaran</h2>
+            
+            {data.categorySummary && data.categorySummary.length > 0 ? (
+              <div className="analysis-grid">
+                {data.categorySummary.map(item => {
+                  const percentage = (item.total / data.totalPengeluaran) * 100
+                  return (
+                    <div key={item.kategori} className="analysis-card">
+                      <div className="analysis-card-header">
+                        <span className="analysis-card-title">{item.kategori}</span>
+                        <span className="analysis-card-amount">{formatRupiah(item.total)}</span>
+                      </div>
+                      <div className="analysis-bar-bg">
+                        <div 
+                          className="analysis-bar-fill"
+                          style={{ width: `${percentage}%` }} 
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p style={{ textAlign: 'center', color: 'var(--color-text-dim)', padding: '24px 0' }}>
+                Belum ada data untuk dianalisis
+              </p>
+            )}
+            
+            <button 
+              className="btn-submit" 
+              style={{ marginTop: '24px', background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              onClick={() => setShowAnalysis(false)}
+            >
+              Tutup
+            </button>
+          </div>
+        </>
+      )}
+
       {/* Transaction List */}
       <section className="transactions-section">
-        {/* Month Shortcuts */}
         {availableMonths.length > 0 && (
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '16px', paddingLeft: '2px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-            <button 
-              onClick={() => handleFilterBulan('')}
-              style={{
-                padding: '6px 14px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', transition: '0.2s',
-                background: filterBulan === '' ? 'var(--color-accent)' : 'var(--color-surface)',
-                color: filterBulan === '' ? '#0a0600' : 'var(--color-text)',
-                border: filterBulan === '' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)'
-              }}
-            >
-              Semua Waktu
-            </button>
             {availableMonths.map(m => {
               const label = new Date(m + '-01').toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
               return (
@@ -266,12 +308,40 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
                 </button>
               )
             })}
+            <button 
+              onClick={() => handleFilterBulan('')}
+              style={{
+                padding: '6px 14px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer', transition: '0.2s',
+                background: filterBulan === '' ? 'var(--color-accent)' : 'var(--color-surface)',
+                color: filterBulan === '' ? '#0a0600' : 'var(--color-text)',
+                border: filterBulan === '' ? '1px solid var(--color-accent)' : '1px solid var(--color-border)'
+              }}
+            >
+              Semua Waktu
+            </button>
           </div>
         )}
 
         <div className="section-header">
           <span className="section-label">Transaksi Terakhir</span>
           <div className="section-line" />
+          <button 
+            onClick={() => setShowAnalysis(true)}
+            className="filter-toggle"
+            style={{ 
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--color-accent)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.65rem',
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              marginRight: '12px'
+            }}
+          >
+            📊 Analisis
+          </button>
           <button 
             onClick={() => setShowFilters(!showFilters)}
             className="filter-toggle"
@@ -302,23 +372,43 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
               <div>
                 <label className="form-label">Urutan</label>
-                <select className="form-select" value={sortDate} onChange={e => setSortDate(e.target.value as 'desc' | 'asc')} style={{ padding: '8px', fontSize: '0.8rem' }}>
-                  <option value="desc">Baru ke Lama (High to Low)</option>
-                  <option value="asc">Lama ke Baru (Low to High)</option>
+                <select className="form-select" value={sortNominal ? `nom-${sortNominal}` : `date-${sortDate}`} onChange={e => {
+                  const val = e.target.value
+                  if (val.startsWith('nom-')) {
+                    setSortNominal(val.replace('nom-', '') as 'desc' | 'asc')
+                    setSortDate('desc')
+                  } else {
+                    setSortNominal('')
+                    setSortDate(val.replace('date-', '') as 'desc' | 'asc')
+                  }
+                }} style={{ padding: '8px', fontSize: '0.8rem' }}>
+                  <option value="date-desc">Terbaru</option>
+                  <option value="date-asc">Terlama</option>
+                  <option value="nom-desc">Nominal Terbesar</option>
+                  <option value="nom-asc">Nominal Terkecil</option>
                 </select>
               </div>
               <div>
-                <label className="form-label">Nama</label>
-                <input type="text" className="form-input" placeholder="Semua..." value={filterNama} onChange={e => setFilterNama(e.target.value)} style={{ padding: '8px', fontSize: '0.8rem' }} />
+                <label className="form-label">Kategori</label>
+                <select className="form-select" value={filterKategori} onChange={e => setFilterKategori(e.target.value)} style={{ padding: '8px', fontSize: '0.8rem' }}>
+                  <option value="">Semua Kategori</option>
+                  {KATEGORI_LIST.map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
               </div>
               <div>
-                <label className="form-label">Kategori</label>
-                <input type="text" className="form-input" placeholder="Semua..." value={filterKategori} onChange={e => setFilterKategori(e.target.value)} style={{ padding: '8px', fontSize: '0.8rem' }} />
+                <label className="form-label">Min Nominal</label>
+                <input type="number" className="form-input" placeholder="Min..." value={minNominal} onChange={e => setMinNominal(e.target.value)} style={{ padding: '8px', fontSize: '0.8rem' }} />
+              </div>
+              <div>
+                <label className="form-label">Max Nominal</label>
+                <input type="number" className="form-input" placeholder="Max..." value={maxNominal} onChange={e => setMaxNominal(e.target.value)} style={{ padding: '8px', fontSize: '0.8rem' }} />
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button 
-                onClick={() => { setSortDate('desc'); setFilterNama(''); setFilterKategori(''); }}
+                onClick={() => { setSortDate('desc'); setSortNominal(''); setFilterKategori(''); setMinNominal(''); setMaxNominal(''); }}
                 style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text)', padding: '6px 12px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer' }}
               >
                 Reset

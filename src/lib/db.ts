@@ -16,7 +16,10 @@ export interface GetTransactionsParams {
   bulan?: string
   nama?: string
   kategori?: string
+  minNominal?: number
+  maxNominal?: number
   sortDate?: 'desc' | 'asc'
+  sortNominal?: 'desc' | 'asc'
 }
 
 const PAGE_SIZE = 8
@@ -24,12 +27,14 @@ const PAGE_SIZE = 8
 /**
  * Fetch transactions with server-side filtering, sorting, and pagination
  */
-export async function getTransactions(params: GetTransactionsParams): Promise<{ totalPengeluaran: number; transaksi: Transaction[]; totalCount: number; hasMore: boolean }> {
+export async function getTransactions(params: GetTransactionsParams): Promise<{ totalPengeluaran: number; transaksi: Transaction[]; totalCount: number; hasMore: boolean; categorySummary: { kategori: string; total: number }[] }> {
   const page = params.page || 1
   const offset = (page - 1) * PAGE_SIZE
   const bulan = params.bulan || ''
   const nama = params.nama || ''
   const kategori = params.kategori || ''
+  const minNominal = params.minNominal ?? 0
+  const maxNominal = params.maxNominal ?? 999999999999
 
   // Get total pengeluaran + count (filtered)
   const saldoResult = await sql`
@@ -40,39 +45,53 @@ export async function getTransactions(params: GetTransactionsParams): Promise<{ 
     WHERE jenis = 'pengeluaran'
       AND (CAST(${bulan} AS TEXT) = '' OR to_char(tanggal, 'YYYY-MM') = ${bulan})
       AND (CAST(${nama} AS TEXT) = '' OR nama ILIKE '%' || ${nama} || '%')
-      AND (CAST(${kategori} AS TEXT) = '' OR kategori ILIKE '%' || ${kategori} || '%')
+      AND (CAST(${kategori} AS TEXT) = '' OR kategori = ${kategori})
+      AND (nominal >= ${minNominal} AND nominal <= ${maxNominal})
   `
   
   const totalPengeluaran = Number(saldoResult.rows[0].total_keluar)
   const totalCount = Number(saldoResult.rows[0].total_count)
 
-  // Get paginated transactions (filtered and sorted)
-  let txResult
-  if (params.sortDate === 'asc') {
-    txResult = await sql`
-      SELECT id, created_at, tanggal, jenis, nominal, kategori, nama, catatan
-      FROM transaksi
-      WHERE jenis = 'pengeluaran'
-        AND (CAST(${bulan} AS TEXT) = '' OR to_char(tanggal, 'YYYY-MM') = ${bulan})
-        AND (CAST(${nama} AS TEXT) = '' OR nama ILIKE '%' || ${nama} || '%')
-        AND (CAST(${kategori} AS TEXT) = '' OR kategori ILIKE '%' || ${kategori} || '%')
-      ORDER BY tanggal ASC, created_at ASC
-      LIMIT ${PAGE_SIZE}
-      OFFSET ${offset}
-    `
-  } else {
-    txResult = await sql`
-      SELECT id, created_at, tanggal, jenis, nominal, kategori, nama, catatan
-      FROM transaksi
-      WHERE jenis = 'pengeluaran'
-        AND (CAST(${bulan} AS TEXT) = '' OR to_char(tanggal, 'YYYY-MM') = ${bulan})
-        AND (CAST(${nama} AS TEXT) = '' OR nama ILIKE '%' || ${nama} || '%')
-        AND (CAST(${kategori} AS TEXT) = '' OR kategori ILIKE '%' || ${kategori} || '%')
-      ORDER BY tanggal DESC, created_at DESC
-      LIMIT ${PAGE_SIZE}
-      OFFSET ${offset}
-    `
+  // Get category summary (filtered)
+  const categoryResult = await sql`
+    SELECT kategori, SUM(nominal) as total
+    FROM transaksi
+    WHERE jenis = 'pengeluaran'
+      AND (CAST(${bulan} AS TEXT) = '' OR to_char(tanggal, 'YYYY-MM') = ${bulan})
+      AND (CAST(${nama} AS TEXT) = '' OR nama ILIKE '%' || ${nama} || '%')
+      AND (CAST(${kategori} AS TEXT) = '' OR kategori = ${kategori})
+      AND (nominal >= ${minNominal} AND nominal <= ${maxNominal})
+    GROUP BY kategori
+    ORDER BY total DESC
+  `
+  const categorySummary = categoryResult.rows.map(r => ({
+    kategori: r.kategori,
+    total: Number(r.total)
+  }))
+
+  // Determine sort order
+  let orderBy = 'tanggal DESC, created_at DESC'
+  if (params.sortNominal === 'desc') {
+    orderBy = 'nominal DESC, tanggal DESC'
+  } else if (params.sortNominal === 'asc') {
+    orderBy = 'nominal ASC, tanggal DESC'
+  } else if (params.sortDate === 'asc') {
+    orderBy = 'tanggal ASC, created_at ASC'
   }
+
+  // Get paginated transactions (filtered and sorted)
+  const txResult = await sql.query(`
+    SELECT id, created_at, tanggal, jenis, nominal, kategori, nama, catatan
+    FROM transaksi
+    WHERE jenis = 'pengeluaran'
+      AND (CAST($1 AS TEXT) = '' OR to_char(tanggal, 'YYYY-MM') = $1)
+      AND (CAST($2 AS TEXT) = '' OR nama ILIKE '%' || $2 || '%')
+      AND (CAST($3 AS TEXT) = '' OR kategori = $3)
+      AND (nominal >= $4 AND nominal <= $5)
+    ORDER BY ${orderBy}
+    LIMIT $6
+    OFFSET $7
+  `, [bulan, nama, kategori, minNominal, maxNominal, PAGE_SIZE, offset])
 
   const transaksi: Transaction[] = txResult.rows.map((r) => ({
     id: r.id,
@@ -85,7 +104,7 @@ export async function getTransactions(params: GetTransactionsParams): Promise<{ 
     catatan: r.catatan ?? '',
   }))
 
-  return { totalPengeluaran, transaksi, totalCount, hasMore: offset + PAGE_SIZE < totalCount }
+  return { totalPengeluaran, transaksi, totalCount, hasMore: offset + PAGE_SIZE < totalCount, categorySummary }
 }
 
 /**

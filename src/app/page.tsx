@@ -5,14 +5,15 @@ import Dashboard from '@/components/Dashboard'
 export const revalidate = 30
 
 export default async function HomePage() {
-  let initialData = { totalPengeluaran: 0, transaksi: [] as any[], totalCount: 0, hasMore: false }
+  let initialData = { totalPengeluaran: 0, transaksi: [] as any[], totalCount: 0, hasMore: false, categorySummary: [] as any[] }
   let initialAnggota: string[] = []
   let initialMonths: string[] = []
   let fetchError = false
 
+  const currentMonth = new Date().toISOString().substring(0, 7)
   try {
     const [txData, anggotaData, monthsData] = await Promise.all([
-      getTransactions({}),
+      getTransactions({ bulan: currentMonth }),
       getAnggota(),
       getAvailableMonths()
     ])

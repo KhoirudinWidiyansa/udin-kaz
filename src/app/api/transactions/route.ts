@@ -10,9 +10,12 @@ export async function GET(request: NextRequest) {
     const bulan = searchParams.get('bulan') || undefined
     const nama = searchParams.get('nama') || undefined
     const kategori = searchParams.get('kategori') || undefined
+    const minNominal = searchParams.get('minNominal') ? parseInt(searchParams.get('minNominal')!) : undefined
+    const maxNominal = searchParams.get('maxNominal') ? parseInt(searchParams.get('maxNominal')!) : undefined
     const sortDate = (searchParams.get('sortDate') as 'desc' | 'asc') || undefined
+    const sortNominal = (searchParams.get('sortNominal') as 'desc' | 'asc') || undefined
 
-    const data = await getTransactions({ page, bulan, nama, kategori, sortDate })
+    const data = await getTransactions({ page, bulan, nama, kategori, minNominal, maxNominal, sortDate, sortNominal })
     return NextResponse.json(data, {
       headers: {
         'Cache-Control': 's-maxage=30, stale-while-revalidate=60',
