@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { KATEGORI_LIST, NAMA_ANGGOTA_DEFAULT } from '@/lib/validators'
+import type { TransactionDraft } from '@/lib/transactionDrafts'
 
 const STORAGE_KEY_NAMA = 'kas_keluarga_nama'
 const STORAGE_KEY_NAMA_LIST = 'kas_keluarga_nama_list'
@@ -13,15 +14,16 @@ interface TransactionFormProps {
   onSuccess: () => void
   onClose: () => void
   initialAnggota: string[]
+  initialDraft?: TransactionDraft | null
 }
 
-export default function TransactionForm({ onSuccess, onClose, initialAnggota }: TransactionFormProps) {
+export default function TransactionForm({ onSuccess, onClose, initialAnggota, initialDraft }: TransactionFormProps) {
   // jenis is always 'pengeluaran' — income feature removed
-  const [nominal, setNominal] = useState('')
-  const [kategori, setKategori] = useState('')
-  const [nama, setNama] = useState('')
-  const [tanggal, setTanggal] = useState(() => new Date().toISOString().split('T')[0])
-  const [catatan, setCatatan] = useState('')
+  const [nominal, setNominal] = useState(() => initialDraft?.nominal ? String(initialDraft.nominal) : '')
+  const [kategori, setKategori] = useState(() => initialDraft?.kategori ?? '')
+  const [nama, setNama] = useState(() => initialDraft?.nama ?? '')
+  const [tanggal, setTanggal] = useState(() => initialDraft?.tanggal ?? new Date().toISOString().split('T')[0])
+  const [catatan, setCatatan] = useState(() => initialDraft?.catatan ?? '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [anggotaList, setAnggotaList] = useState<string[]>(initialAnggota)
@@ -35,13 +37,13 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota }: 
   // Load last used name from localStorage (focus only name preference)
   useEffect(() => {
     const savedNama = localStorage.getItem(STORAGE_KEY_NAMA)
-    if (savedNama && initialAnggota.includes(savedNama)) {
+    if (!initialDraft?.nama && savedNama && initialAnggota.includes(savedNama)) {
       setNama(savedNama)
     }
 
     // Focus nominal input on open
     setTimeout(() => nominalRef.current?.focus(), 100)
-  }, [initialAnggota])
+  }, [initialAnggota, initialDraft?.nama])
 
   // Format number to Rupiah display
   const formatDisplayNominal = (raw: string): string => {
@@ -121,7 +123,14 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota }: 
   return (
     <div className="sheet-modal" role="dialog" aria-modal="true" aria-label="Form Tambah Transaksi">
       <div className="sheet-handle" onClick={onClose} style={{ cursor: 'pointer' }} />
-      <h2 className="sheet-title">Catat Transaksi</h2>
+      <h2 className="sheet-title">{initialDraft ? 'Review Draft Transaksi' : 'Catat Transaksi'}</h2>
+
+      {initialDraft && (
+        <div className="draft-source-banner">
+          <span>{initialDraft.sourceLabel}</span>
+          <strong>Editable sebelum simpan</strong>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} noValidate>
         {/* Jenis is always pengeluaran */}
@@ -269,7 +278,7 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota }: 
           className="btn-submit"
           disabled={isSubmitting}
         >
-          {isSubmitting ? 'Menyimpan...' : 'Catat Sekarang'}
+          {isSubmitting ? 'Menyimpan...' : initialDraft ? 'Simpan Draft' : 'Catat Sekarang'}
         </button>
       </form>
     </div>

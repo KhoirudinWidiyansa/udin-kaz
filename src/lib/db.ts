@@ -11,6 +11,12 @@ export interface Transaction {
   catatan: string
 }
 
+export interface CategorySummary {
+  kategori: string
+  total: number
+  count: number
+}
+
 export interface GetTransactionsParams {
   page?: number
   bulan?: string
@@ -27,7 +33,7 @@ const PAGE_SIZE = 8
 /**
  * Fetch transactions with server-side filtering, sorting, and pagination
  */
-export async function getTransactions(params: GetTransactionsParams): Promise<{ totalPengeluaran: number; transaksi: Transaction[]; totalCount: number; hasMore: boolean; categorySummary: { kategori: string; total: number }[] }> {
+export async function getTransactions(params: GetTransactionsParams): Promise<{ totalPengeluaran: number; transaksi: Transaction[]; totalCount: number; hasMore: boolean; categorySummary: CategorySummary[] }> {
   const page = params.page || 1
   const offset = (page - 1) * PAGE_SIZE
   const bulan = params.bulan || ''
@@ -54,7 +60,7 @@ export async function getTransactions(params: GetTransactionsParams): Promise<{ 
 
   // Get category summary (filtered)
   const categoryResult = await sql`
-    SELECT kategori, SUM(nominal) as total
+    SELECT kategori, SUM(nominal) as total, COUNT(*)::int as count
     FROM transaksi
     WHERE jenis = 'pengeluaran'
       AND (CAST(${bulan} AS TEXT) = '' OR to_char(tanggal, 'YYYY-MM') = ${bulan})
@@ -66,7 +72,8 @@ export async function getTransactions(params: GetTransactionsParams): Promise<{ 
   `
   const categorySummary = categoryResult.rows.map(r => ({
     kategori: r.kategori,
-    total: Number(r.total)
+    total: Number(r.total),
+    count: Number(r.count),
   }))
 
   // Determine sort order
@@ -179,6 +186,18 @@ export async function deleteTransaction(id: number): Promise<boolean> {
 export async function getAnggota(): Promise<string[]> {
   const result = await sql`SELECT nama FROM anggota ORDER BY created_at ASC`
   return result.rows.map(r => r.nama)
+}
+
+/**
+ * Fetch details of an anggota by name
+ */
+export async function getAnggotaByName(nama: string): Promise<{ nama: string; pin_hash: string | null } | null> {
+  const result = await sql`SELECT nama, pin_hash FROM anggota WHERE nama = ${nama}`;
+  if (result.rows.length === 0) return null;
+  return {
+    nama: result.rows[0].nama,
+    pin_hash: result.rows[0].pin_hash,
+  };
 }
 
 /**

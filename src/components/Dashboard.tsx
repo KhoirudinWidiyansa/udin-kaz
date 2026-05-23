@@ -68,6 +68,10 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
   const [page, setPage] = useState(1)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Auth state
+  const [currentUser, setCurrentUser] = useState<string>('')
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
   
   const { ref, inView } = useInView()
   const isFirstRender = useRef(true)
@@ -107,6 +111,28 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
     }, 300)
     return () => clearTimeout(timeoutId)
   }, [fetchData, sortNominal, minNominal, maxNominal])
+
+  // Fetch current user
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(res => res.json())
+      .then(data => {
+        if (data.nama) {
+          setCurrentUser(data.nama)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      window.location.href = '/login'
+    } catch {
+      setIsLoggingOut(false)
+    }
+  }
 
   // Infinite Scroll Trigger
   useEffect(() => {
@@ -187,9 +213,22 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
   return (
     <>
       {/* Header */}
-      <header className="app-header">
-        <span className="app-header__title">Kas Keluarga</span>
-        <span className="app-header__subtitle">Keuangan Bersama</span>
+      <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <span className="app-header__title">Halo, {currentUser || 'Pengguna'}!</span>
+          <span className="app-header__subtitle">Keuangan Bersama</span>
+        </div>
+        <button
+          type="button"
+          className="action-btn"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          aria-label="Logout"
+          style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-keluar)', borderRadius: 'var(--radius-md)' }}
+          title="Keluar"
+        >
+          {isLoggingOut ? '...' : '→]'}
+        </button>
       </header>
 
       {/* Balance Section */}
