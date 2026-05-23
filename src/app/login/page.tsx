@@ -12,7 +12,8 @@ export default function LoginPage() {
     fetch('/api/anggota')
       .then(res => res.json())
       .then(data => {
-        setAnggotaList(data.anggota || []);
+        // API returns array directly: ["Ayah","Ibu","Udin"]
+        setAnggotaList(Array.isArray(data) ? data : []);
         setIsLoading(false);
       })
       .catch(() => setIsLoading(false));

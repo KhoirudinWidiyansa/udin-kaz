@@ -184,7 +184,7 @@ export async function deleteTransaction(id: number): Promise<boolean> {
  * Fetch list of anggota names
  */
 export async function getAnggota(): Promise<string[]> {
-  const result = await sql`SELECT nama FROM anggota ORDER BY created_at ASC`
+  const result = await sql`SELECT nama FROM anggota`
   return result.rows.map(r => r.nama)
 }
 

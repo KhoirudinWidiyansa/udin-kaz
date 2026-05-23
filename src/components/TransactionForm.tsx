@@ -18,6 +18,8 @@ interface TransactionFormProps {
 }
 
 export default function TransactionForm({ onSuccess, onClose, initialAnggota, initialDraft }: TransactionFormProps) {
+  console.log('🔴 TransactionForm RENDERED', { initialAnggota })
+  
   // jenis is always 'pengeluaran' — income feature removed
   const [nominal, setNominal] = useState(() => initialDraft?.nominal ? String(initialDraft.nominal) : '')
   const [kategori, setKategori] = useState(() => initialDraft?.kategori ?? '')
@@ -28,22 +30,43 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [anggotaList, setAnggotaList] = useState<string[]>(initialAnggota)
 
+  // Debug: log initial value
+  useEffect(() => {
+    console.log('[anggota] initialAnggota prop:', initialAnggota)
+  }, [])
+
   // Custom anggota additions
   const [isAddingAnggota, setIsAddingAnggota] = useState(false)
   const [newAnggotaName, setNewAnggotaName] = useState('')
 
   const nominalRef = useRef<HTMLInputElement>(null)
 
+  // Fetch latest anggota list from API on mount
+  useEffect(() => {
+    fetch('/api/anggota', { cache: 'no-store', headers: { 'Accept': 'application/json' } })
+      .then(res => {
+        console.log('[anggota] status:', res.status, 'content-type:', res.headers.get('content-type'))
+        return res.ok ? res.json() : null
+      })
+      .then(data => {
+        console.log('[anggota] data:', data)
+        if (Array.isArray(data) && data.length > 0) {
+          setAnggotaList(data)
+        }
+      })
+      .catch(err => console.error('[anggota] error:', err))
+  }, [])
+
   // Load last used name from localStorage (focus only name preference)
   useEffect(() => {
     const savedNama = localStorage.getItem(STORAGE_KEY_NAMA)
-    if (!initialDraft?.nama && savedNama && initialAnggota.includes(savedNama)) {
+    if (!initialDraft?.nama && savedNama) {
       setNama(savedNama)
     }
 
     // Focus nominal input on open
     setTimeout(() => nominalRef.current?.focus(), 100)
-  }, [initialAnggota, initialDraft?.nama])
+  }, [initialDraft?.nama])
 
   // Format number to Rupiah display
   const formatDisplayNominal = (raw: string): string => {

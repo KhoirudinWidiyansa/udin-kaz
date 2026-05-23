@@ -4,14 +4,17 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useInView } from 'react-intersection-observer'
 import type { Transaction } from '@/lib/db'
 import TransactionForm from './TransactionForm'
+import BottomNav, { type DashboardTab } from './BottomNav'
+import { InputHubView, ScanReceiptView, PlannerView, InsightView } from './FeatureViews'
 import { KATEGORI_LIST } from '@/lib/validators'
+import type { TransactionDraft } from '@/lib/transactionDrafts'
 
 interface DashboardData {
   totalPengeluaran: number
   transaksi: Transaction[]
   totalCount: number
   hasMore: boolean
-  categorySummary: { kategori: string; total: number }[]
+  categorySummary: Array<{ kategori: string; total: number; count: number }>
 }
 
 interface DashboardProps {
@@ -72,7 +75,11 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
   // Auth state
   const [currentUser, setCurrentUser] = useState<string>('')
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<DashboardTab>('home')
+  const [editingDraft, setEditingDraft] = useState<TransactionDraft | null>(null)
+
   const { ref, inView } = useInView()
   const isFirstRender = useRef(true)
 
@@ -231,7 +238,8 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
         </button>
       </header>
 
-      {/* Balance Section */}
+      {/* Balance Section - only on home tab */}
+      {activeTab === 'home' && (
       <section className="balance-section animate-in">
         <p className="balance-label">
           {filterBulan 
@@ -280,9 +288,10 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
           </div>
         </div>
       </section>
+      )}
 
-      {/* Analysis Overlay */}
-      {showAnalysis && (
+      {/* Analysis Overlay - only on home tab */}
+      {activeTab === 'home' && showAnalysis && (
         <>
           <div className="overlay" onClick={() => setShowAnalysis(false)} />
           <div className="sheet-modal" style={{ height: 'auto', paddingBottom: '32px' }}>
@@ -326,7 +335,8 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
         </>
       )}
 
-      {/* Transaction List */}
+      {/* Transaction List - only show on home tab */}
+      {activeTab === 'home' && (
       <section className="transactions-section">
         {availableMonths.length > 0 && (
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '16px', paddingLeft: '2px', msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
@@ -520,8 +530,10 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
           </div>
         )}
       </section>
+      )}
 
-      {/* FAB - Add Transaction */}
+      {/* FAB - Add Transaction - only on home tab */}
+      {activeTab === 'home' && (
       <div className="form-trigger">
         <button
           className="btn-add"
@@ -531,6 +543,39 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
           + Catat Pengeluaran
         </button>
       </div>
+      )}
+
+      {/* Bottom Navigation */}
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Tab Views */}
+      {activeTab === 'input' && (
+        <InputHubView
+          onManualEntry={() => setShowForm(true)}
+          onReviewDraft={(draft) => {
+            setEditingDraft(draft)
+            setShowForm(true)
+          }}
+          onQueueDrafts={(drafts) => {
+            // Queue drafts to inbox
+          }}
+          onDiscardDraft={(id) => {
+            // Discard draft
+          }}
+          draftInbox={[]}
+        />
+      )}
+
+      {activeTab === 'scan' && (
+        <ScanReceiptView
+          onQueueDrafts={() => {}}
+          onGoToInbox={() => setActiveTab('input')}
+        />
+      )}
+
+      {activeTab === 'planner' && <PlannerView />}
+
+      {activeTab === 'insight' && <InsightView data={data} />}
 
       {/* Transaction Form Modal */}
       {showForm && (
@@ -540,6 +585,7 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
             onSuccess={handleTransactionAdded}
             onClose={() => setShowForm(false)}
             initialAnggota={initialAnggota}
+            initialDraft={editingDraft}
           />
         </>
       )}
