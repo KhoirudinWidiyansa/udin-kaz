@@ -5,9 +5,8 @@ import { useInView } from 'react-intersection-observer'
 import type { Transaction } from '@/lib/db'
 import TransactionForm from './TransactionForm'
 import BottomNav, { type DashboardTab } from './BottomNav'
-import { InputHubView, ScanReceiptView, PlannerView, InsightView } from './FeatureViews'
+import { PlannerView, InsightView } from './FeatureViews'
 import { KATEGORI_LIST } from '@/lib/validators'
-import type { TransactionDraft } from '@/lib/transactionDrafts'
 
 interface DashboardData {
   totalPengeluaran: number
@@ -78,7 +77,6 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
 
   // Tab state
   const [activeTab, setActiveTab] = useState<DashboardTab>('home')
-  const [editingDraft, setEditingDraft] = useState<TransactionDraft | null>(null)
 
   const { ref, inView } = useInView()
   const isFirstRender = useRef(true)
@@ -549,30 +547,6 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
 
       {/* Tab Views */}
-      {activeTab === 'input' && (
-        <InputHubView
-          onManualEntry={() => setShowForm(true)}
-          onReviewDraft={(draft) => {
-            setEditingDraft(draft)
-            setShowForm(true)
-          }}
-          onQueueDrafts={(drafts) => {
-            // Queue drafts to inbox
-          }}
-          onDiscardDraft={(id) => {
-            // Discard draft
-          }}
-          draftInbox={[]}
-        />
-      )}
-
-      {activeTab === 'scan' && (
-        <ScanReceiptView
-          onQueueDrafts={() => {}}
-          onGoToInbox={() => setActiveTab('input')}
-        />
-      )}
-
       {activeTab === 'planner' && <PlannerView />}
 
       {activeTab === 'insight' && <InsightView data={data} />}
@@ -585,7 +559,7 @@ export default function Dashboard({ initialData, initialAnggota, fetchError, ini
             onSuccess={handleTransactionAdded}
             onClose={() => setShowForm(false)}
             initialAnggota={initialAnggota}
-            initialDraft={editingDraft}
+            initialDraft={null}
           />
         </>
       )}

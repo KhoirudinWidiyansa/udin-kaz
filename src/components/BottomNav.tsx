@@ -1,6 +1,6 @@
 'use client'
 
-export type DashboardTab = 'home' | 'input' | 'scan' | 'planner' | 'insight'
+export type DashboardTab = 'home' | 'planner' | 'insight'
 
 interface BottomNavProps {
   activeTab: DashboardTab
@@ -13,8 +13,6 @@ const NAV_ITEMS: Array<{
   icon: string
 }> = [
   { id: 'home', label: 'Beranda', icon: 'H' },
-  { id: 'input', label: 'Catat', icon: '+' },
-  { id: 'scan', label: 'Scan', icon: 'O' },
   { id: 'planner', label: 'Rencana', icon: 'AI' },
   { id: 'insight', label: 'Insight', icon: '%' },
 ]

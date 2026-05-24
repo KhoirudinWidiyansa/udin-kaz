@@ -1,12 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { CategorySummary, Transaction } from '@/lib/db'
 import { formatRupiah } from '@/lib/formatters'
 import { generateMonthlyInsight } from '@/lib/insights'
-import { parsePlannerItems, type PlannerRequest, type PlannerScenario } from '@/lib/planner'
-import { parseAmount, parseReceiptText } from '@/lib/receiptParser'
-import type { StoredTransactionDraft, TransactionDraft } from '@/lib/transactionDrafts'
+import { parsePlannerItems, type PlannerScenario } from '@/lib/planner'
+import { parseAmount } from '@/lib/receiptParser'
+import TrendChart from './TrendChart'
+import BudgetProgress from './BudgetProgress'
 
 interface DashboardData {
   totalPengeluaran: number
@@ -14,19 +15,6 @@ interface DashboardData {
   totalCount: number
   hasMore: boolean
   categorySummary: CategorySummary[]
-}
-
-interface InputHubViewProps {
-  onManualEntry: () => void
-  onReviewDraft: (draft: TransactionDraft) => void
-  onQueueDrafts: (drafts: TransactionDraft[]) => void
-  onDiscardDraft: (id: string) => void
-  draftInbox: StoredTransactionDraft[]
-}
-
-interface ScanReceiptViewProps {
-  onQueueDrafts: (drafts: TransactionDraft[]) => void
-  onGoToInbox: () => void
 }
 
 interface InsightViewProps {
@@ -41,273 +29,12 @@ function formatDisplayNominal(raw: string): string {
   return new Intl.NumberFormat('id-ID').format(Number(digits))
 }
 
-export function InputHubView({
-  onManualEntry,
-  onReviewDraft,
-  onQueueDrafts,
-  onDiscardDraft,
-  draftInbox,
-}: InputHubViewProps) {
-  const [bankDrafts, setBankDrafts] = useState<TransactionDraft[]>([])
-  const [bankProvider, setBankProvider] = useState('')
-  const [bankError, setBankError] = useState('')
-  const [isSyncingBank, setIsSyncingBank] = useState(false)
-
-  const syncBankDrafts = useCallback(async () => {
-    setIsSyncingBank(true)
-    setBankError('')
-
-    try {
-      const res = await fetch('/api/bank/drafts', { cache: 'no-store' })
-      const payload = await res.json()
-
-      if (!res.ok) {
-        setBankError(payload.error || 'Gagal mengambil draft mutasi')
-        return
-      }
-
-      const drafts = payload.drafts || []
-      setBankDrafts(drafts)
-      setBankProvider(payload.provider || '')
-      onQueueDrafts(drafts)
-    } catch {
-      setBankError('Koneksi sinkronisasi bank gagal')
-    } finally {
-      setIsSyncingBank(false)
-    }
-  }, [onQueueDrafts])
-
-  useEffect(() => {
-    syncBankDrafts()
-  }, [syncBankDrafts])
-
-  return (
-    <section className="tab-view animate-in">
-      <div className="feature-panel feature-panel--accent">
-        <div>
-          <span className="feature-eyebrow">Input manual</span>
-          <h2 className="feature-title">Catat pengeluaran</h2>
-        </div>
-        <button type="button" className="feature-action" onClick={onManualEntry}>
-          Buka Form
-        </button>
-      </div>
-
-      <div className="feature-panel">
-        <div className="feature-panel__header">
-          <div>
-            <span className="feature-eyebrow">Draft inbox</span>
-            <h2 className="feature-title">Menunggu review</h2>
-          </div>
-          <span className="status-pill">{draftInbox.length} draft</span>
-        </div>
-
-        <div className="draft-list">
-          {draftInbox.length > 0 ? draftInbox.map(draft => (
-            <article key={draft.id} className="draft-item draft-item--queued">
-              <div>
-                <p className="draft-item__title">{draft.catatan?.replace('Draft dari mutasi bank: ', '').replace('Draft OCR: ', '') || draft.sourceLabel}</p>
-                <p className="draft-item__meta">{draft.sourceLabel} / {draft.kategori || 'Kategori kosong'} / {draft.tanggal || '-'}</p>
-              </div>
-              <div className="draft-item__side">
-                <span className="draft-item__amount">{formatRupiah(draft.nominal ?? 0)}</span>
-                <div className="draft-actions">
-                  <button type="button" className="text-action" onClick={() => onReviewDraft(draft)}>
-                    Review
-                  </button>
-                  <button type="button" className="text-action text-action--muted" onClick={() => onDiscardDraft(draft.id)}>
-                    Buang
-                  </button>
-                </div>
-              </div>
-            </article>
-          )) : (
-            <div className="empty-state empty-state--compact">
-              <p>Belum ada draft menunggu review</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="feature-panel">
-        <div className="feature-panel__header">
-          <div>
-            <span className="feature-eyebrow">API bank</span>
-            <h2 className="feature-title">Draft mutasi</h2>
-          </div>
-          <span className="status-pill">{bankProvider || 'Tahap 6'}</span>
-        </div>
-
-        <button
-          type="button"
-          className="feature-action feature-action--full sync-action"
-          onClick={syncBankDrafts}
-          disabled={isSyncingBank}
-        >
-          {isSyncingBank ? 'Sinkronisasi...' : 'Sinkronisasi Draft'}
-        </button>
-
-        {bankError && <p className="form-error">{bankError}</p>}
-
-        <div className="draft-list">
-          {bankDrafts.length > 0 ? bankDrafts.map((draft, index) => (
-            <article key={`${draft.catatan}-${index}`} className="draft-item">
-              <div>
-                <p className="draft-item__title">{draft.catatan?.replace('Draft dari mutasi bank: ', '')}</p>
-                <p className="draft-item__meta">{draft.kategori} / {draft.tanggal}</p>
-              </div>
-              <div className="draft-item__side">
-                <span className="draft-item__amount">{formatRupiah(draft.nominal ?? 0)}</span>
-                <button type="button" className="text-action" onClick={() => onQueueDrafts([draft])}>
-                  Inbox
-                </button>
-              </div>
-            </article>
-          )) : (
-            <div className="empty-state empty-state--compact">
-              <p>Belum ada draft mutasi</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-export function ScanReceiptView({ onQueueDrafts, onGoToInbox }: ScanReceiptViewProps) {
-  const [receiptText, setReceiptText] = useState('Kopi susu 20000\nRoti 15000\nAir mineral 5000\nTotal 40000')
-  const [receiptImage, setReceiptImage] = useState<File | null>(null)
-  const [imagePreviewUrl, setImagePreviewUrl] = useState('')
-  const [isProcessingReceipt, setIsProcessingReceipt] = useState(false)
-  const [receiptError, setReceiptError] = useState('')
-  const parsedReceipt = useMemo(() => parseReceiptText(receiptText), [receiptText])
-  const total = parsedReceipt.total
-
-  useEffect(() => {
-    if (!receiptImage) {
-      setImagePreviewUrl('')
-      return
-    }
-
-    const url = URL.createObjectURL(receiptImage)
-    setImagePreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [receiptImage])
-
-  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setReceiptError('')
-    setReceiptImage(event.target.files?.[0] ?? null)
-  }
-
-  const handleCreateDraft = async () => {
-    setReceiptError('')
-    setIsProcessingReceipt(true)
-
-    try {
-      const formData = new FormData()
-      if (receiptImage) {
-        formData.set('image', receiptImage)
-      } else {
-        formData.set('ocrText', receiptText)
-      }
-
-      const res = await fetch('/api/ocr/receipt', {
-        method: 'POST',
-        body: formData,
-      })
-      const payload = await res.json()
-
-      if (!res.ok) {
-        setReceiptError(payload.error || 'Gagal memproses struk')
-        return
-      }
-
-      if (payload.parsed?.rawText) {
-        setReceiptText(payload.parsed.rawText)
-      }
-
-      onQueueDrafts([payload.draft])
-      onGoToInbox()
-    } catch {
-      setReceiptError('Koneksi OCR gagal')
-    } finally {
-      setIsProcessingReceipt(false)
-    }
-  }
-
-  return (
-    <section className="tab-view animate-in">
-      <div className="feature-panel">
-        <div className="feature-panel__header">
-          <div>
-            <span className="feature-eyebrow">AI OCR</span>
-            <h2 className="feature-title">Scan struk</h2>
-          </div>
-          <span className="status-pill">Draft</span>
-        </div>
-
-        <div className="receipt-upload">
-          <label className="receipt-upload__target" htmlFor="receipt-image">
-            <span className="feature-eyebrow">Upload gambar</span>
-            <strong>{receiptImage ? receiptImage.name : 'Pilih foto struk'}</strong>
-          </label>
-          <input
-            id="receipt-image"
-            type="file"
-            accept="image/*"
-            onChange={handleImageChange}
-          />
-        </div>
-
-        {imagePreviewUrl && (
-          <div
-            className="receipt-preview"
-            role="img"
-            aria-label="Preview struk"
-            style={{ backgroundImage: `url(${imagePreviewUrl})` }}
-          />
-        )}
-
-        <label className="form-label" htmlFor="receipt-text">Hasil OCR sementara</label>
-        <textarea
-          id="receipt-text"
-          className="form-textarea receipt-textarea"
-          value={receiptText}
-          onChange={event => setReceiptText(event.target.value)}
-        />
-
-        <div className="receipt-summary">
-          <span>Total terbaca</span>
-          <strong>{formatRupiah(total)}</strong>
-        </div>
-
-        <button
-          type="button"
-          className="feature-action feature-action--full"
-          onClick={handleCreateDraft}
-          disabled={isProcessingReceipt || (!receiptImage && total <= 0)}
-        >
-          {isProcessingReceipt ? 'Memproses...' : receiptImage ? 'Proses OCR' : 'Tambahkan ke Inbox'}
-        </button>
-
-        {receiptError && <p className="form-error">{receiptError}</p>}
-      </div>
-    </section>
-  )
-}
-
-const DEFAULT_PLANNER_REQUEST: PlannerRequest = {
-  context: 'Nongkrong bersama teman di cafe',
-  budget: 60000,
-  items: ['Rokok', 'Kopi', 'Air mineral', 'Makanan ringan'],
-}
-
 const PLANNER_CACHE_KEY = 'kas_keluarga_planner_cache'
 
 export function PlannerView() {
-  const [context, setContext] = useState(DEFAULT_PLANNER_REQUEST.context)
-  const [budget, setBudget] = useState(String(DEFAULT_PLANNER_REQUEST.budget))
-  const [itemsText, setItemsText] = useState(DEFAULT_PLANNER_REQUEST.items.join('\n'))
+  const [context, setContext] = useState('')
+  const [budget, setBudget] = useState('')
+  const [itemsText, setItemsText] = useState('')
   const [activeBudget, setActiveBudget] = useState(0)
   const [activeItemsCount, setActiveItemsCount] = useState(0)
   const [scenarios, setScenarios] = useState<PlannerScenario[]>(() => {
@@ -605,6 +332,31 @@ export function InsightView({ data }: InsightViewProps) {
 
   return (
     <section className="tab-view animate-in">
+      {/* Trend Chart Section */}
+      <div className="feature-panel">
+        <div className="feature-panel__header">
+          <div>
+            <span className="feature-eyebrow">Tren</span>
+            <h2 className="feature-title">Grafik Pengeluaran</h2>
+          </div>
+        </div>
+        {data.transaksi.length > 0 ? (
+          <TrendChart 
+            transactions={data.transaksi} 
+            filterKategori={undefined}
+            filterNama={undefined}
+          />
+        ) : (
+          <div className="empty-state empty-state--compact">
+            <p>Belum ada data transaksi</p>
+          </div>
+        )}
+      </div>
+
+      {/* Budget Progress Section */}
+      <BudgetProgress />
+
+      {/* Monthly Target & Benchmark Section */}
       <div className="feature-panel">
         <div className="feature-panel__header">
           <div>

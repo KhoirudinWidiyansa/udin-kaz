@@ -19,13 +19,13 @@ export async function POST(request: Request) {
 
     const normalizedContext = context?.trim() || 'Rencana Pengeluaran'
 
-    // We generate the 3 scenarios (hemat, sedang, boros) using Gemini
+    // We generate the 2 scenarios (hemat, sedang) using Gemini - removed "boros"
     const { object } = await generateObject({
       model: google('gemini-2.5-flash-lite'),
       schema: z.object({
         scenarios: z.array(
           z.object({
-            mode: z.enum(['hemat', 'sedang', 'boros']),
+            mode: z.enum(['hemat', 'sedang']),
             title: z.string(),
             description: z.string(),
             total: z.number(),
@@ -47,10 +47,11 @@ Konteks rencana: "${normalizedContext}"
 Budget yang dianggarkan: Rp ${budget}
 Daftar item yang ingin dibeli/direncanakan: ${items.join(', ')}
 
-Buatkan 3 skenario anggaran terperinci dalam Bahasa Indonesia:
+Buatkan 2 skenario anggaran terperinci dalam Bahasa Indonesia:
 1. 'hemat': Skenario super hemat, memprioritaskan opsi murah/minimalis agar menyisakan banyak uang cadangan.
 2. 'sedang': Skenario sedang/standar, menyeimbangkan kenyamanan dan batas budget dengan opsi harga pasar rata-rata.
-3. 'boros': Skenario boros/premium, menggunakan pilihan kualitas tinggi/premium, yang berisiko melewati budget.
+
+HANYA BUAT 2 SKENARIO (hemat dan sedang). Skenario "boros" TIDAK diperlukan.
 
 Aturan Penting:
 - Jumlah harga (total) dari masing-masing skenario harus dihitung dengan benar dari penjumlahan harga item-item di skenario tersebut.

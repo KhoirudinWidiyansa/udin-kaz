@@ -1,14 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { KATEGORI_LIST, NAMA_ANGGOTA_DEFAULT } from '@/lib/validators'
+import { useEffect, useRef, useState } from 'react'
+import { KATEGORI_LIST } from '@/lib/validators'
 import type { TransactionDraft } from '@/lib/transactionDrafts'
+import SplitTransactionForm from './SplitTransactionForm'
 
 const STORAGE_KEY_NAMA = 'kas_keluarga_nama'
-const STORAGE_KEY_NAMA_LIST = 'kas_keluarga_nama_list'
-
-// Default family members — can be customized via UI
-const DEFAULT_ANGGOTA = [...NAMA_ANGGOTA_DEFAULT]
 
 interface TransactionFormProps {
   onSuccess: () => void
@@ -17,10 +14,13 @@ interface TransactionFormProps {
   initialDraft?: TransactionDraft | null
 }
 
+function formatDisplayNominal(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return ''
+  return new Intl.NumberFormat('id-ID').format(parseInt(digits, 10))
+}
+
 export default function TransactionForm({ onSuccess, onClose, initialAnggota, initialDraft }: TransactionFormProps) {
-  console.log('🔴 TransactionForm RENDERED', { initialAnggota })
-  
-  // jenis is always 'pengeluaran' — income feature removed
   const [nominal, setNominal] = useState(() => initialDraft?.nominal ? String(initialDraft.nominal) : '')
   const [kategori, setKategori] = useState(() => initialDraft?.kategori ?? '')
   const [nama, setNama] = useState(() => initialDraft?.nama ?? '')
@@ -29,27 +29,24 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [anggotaList, setAnggotaList] = useState<string[]>(initialAnggota)
-
-  // Debug: log initial value
-  useEffect(() => {
-    console.log('[anggota] initialAnggota prop:', initialAnggota)
-  }, [])
-
-  // Custom anggota additions
   const [isAddingAnggota, setIsAddingAnggota] = useState(false)
   const [newAnggotaName, setNewAnggotaName] = useState('')
+  const [isSplitMode, setIsSplitMode] = useState(false)
 
   const nominalRef = useRef<HTMLInputElement>(null)
+  const hasNominal = Boolean(nominal && parseInt(nominal, 10) > 0)
+  const splitSubmitError = !hasNominal
+    ? 'Isi nominal transaksi utama terlebih dulu sebelum menyimpan split.'
+    : !nama.trim()
+      ? 'Pilih nama anggota di form utama sebelum menyimpan split.'
+      : !tanggal
+        ? 'Isi tanggal transaksi di form utama sebelum menyimpan split.'
+        : ''
 
-  // Fetch latest anggota list from API on mount
   useEffect(() => {
-    fetch('/api/anggota', { cache: 'no-store', headers: { 'Accept': 'application/json' } })
-      .then(res => {
-        console.log('[anggota] status:', res.status, 'content-type:', res.headers.get('content-type'))
-        return res.ok ? res.json() : null
-      })
+    fetch('/api/anggota', { cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(res => res.ok ? res.json() : null)
       .then(data => {
-        console.log('[anggota] data:', data)
         if (Array.isArray(data) && data.length > 0) {
           setAnggotaList(data)
         }
@@ -57,37 +54,29 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
       .catch(err => console.error('[anggota] error:', err))
   }, [])
 
-  // Load last used name from localStorage (focus only name preference)
   useEffect(() => {
     const savedNama = localStorage.getItem(STORAGE_KEY_NAMA)
     if (!initialDraft?.nama && savedNama) {
       setNama(savedNama)
     }
 
-    // Focus nominal input on open
     setTimeout(() => nominalRef.current?.focus(), 100)
   }, [initialDraft?.nama])
-
-  // Format number to Rupiah display
-  const formatDisplayNominal = (raw: string): string => {
-    const digits = raw.replace(/\D/g, '')
-    if (!digits) return ''
-    return new Intl.NumberFormat('id-ID').format(parseInt(digits))
-  }
 
   const handleNominalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, '')
     setNominal(raw)
-    if (errors.nominal) setErrors(prev => ({ ...prev, nominal: '' }))
+    if (errors.nominal) {
+      setErrors(prev => ({ ...prev, nominal: '' }))
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrors({})
 
-    // Client-side validation
     const newErrors: Record<string, string> = {}
-    if (!nominal || parseInt(nominal) <= 0) newErrors.nominal = 'Nominal wajib diisi'
+    if (!nominal || parseInt(nominal, 10) <= 0) newErrors.nominal = 'Nominal wajib diisi'
     if (!kategori) newErrors.kategori = 'Pilih kategori'
     if (!nama.trim()) newErrors.nama = 'Pilih atau masukkan nama anggota'
     if (!tanggal) newErrors.tanggal = 'Tanggal wajib diisi'
@@ -105,7 +94,7 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jenis: 'pengeluaran',
-          nominal: parseInt(nominal),
+          nominal: parseInt(nominal, 10),
           kategori,
           nama: nama.trim(),
           tanggal,
@@ -127,12 +116,10 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
         return
       }
 
-      // Save name to localStorage for next time
       localStorage.setItem(STORAGE_KEY_NAMA, nama.trim())
 
-      // Add to custom list if new
       if (!anggotaList.includes(nama.trim())) {
-        setAnggotaList([...anggotaList, nama.trim()])
+        setAnggotaList(prev => [...prev, nama.trim()])
       }
 
       onSuccess()
@@ -144,9 +131,16 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
   }
 
   return (
-    <div className="sheet-modal" role="dialog" aria-modal="true" aria-label="Form Tambah Transaksi">
-      <div className="sheet-handle" onClick={onClose} style={{ cursor: 'pointer' }} />
-      <h2 className="sheet-title">{initialDraft ? 'Review Draft Transaksi' : 'Catat Transaksi'}</h2>
+    <div className="sheet-modal transaction-sheet" role="dialog" aria-modal="true" aria-label="Form tambah transaksi">
+      <button type="button" className="sheet-handle transaction-sheet__handle" onClick={onClose} aria-label="Tutup form transaksi" />
+
+      <div className="transaction-sheet__header">
+        <span className="feature-eyebrow">{initialDraft ? 'Review draft' : 'Input manual'}</span>
+        <h2 className="sheet-title">{initialDraft ? 'Review Draft Transaksi' : 'Catat Transaksi'}</h2>
+        <p className="transaction-sheet__description">
+          Mulai dari nominal, lalu rapikan kategori, anggota, dan konteks transaksi. Form ini sengaja dibuat ringkas supaya cepat dipindai saat input.
+        </p>
+      </div>
 
       {initialDraft && (
         <div className="draft-source-banner">
@@ -155,10 +149,18 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
         </div>
       )}
 
-      <form onSubmit={handleSubmit} noValidate>
-        {/* Jenis is always pengeluaran */}
+      <section className="transaction-overview" aria-label="Ringkasan transaksi">
+        <div className="transaction-overview__row">
+          <span>Status input</span>
+          <strong>{initialDraft ? 'Draft siap review' : 'Transaksi baru'}</strong>
+        </div>
+        <div className="transaction-overview__row">
+          <span>Nominal saat ini</span>
+          <strong>{hasNominal ? `Rp ${formatDisplayNominal(nominal)}` : 'Belum diisi'}</strong>
+        </div>
+      </section>
 
-        {/* Nominal */}
+      <form onSubmit={handleSubmit} noValidate className="transaction-form">
         <div className="form-group">
           <label className="form-label" htmlFor="input-nominal">Nominal (Rp)</label>
           <input
@@ -175,28 +177,47 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
           {errors.nominal && <p className="form-error">{errors.nominal}</p>}
         </div>
 
-        {/* Kategori */}
         <div className="form-group">
-          <label className="form-label" htmlFor="select-kategori">Kategori</label>
-          <select
-            id="select-kategori"
-            className="form-select"
-            value={kategori}
-            onChange={e => { setKategori(e.target.value); setErrors(p => ({ ...p, kategori: '' })) }}
-          >
-            <option value="">Pilih kategori...</option>
-            {KATEGORI_LIST.map(k => (
-              <option key={k} value={k}>{k}</option>
-            ))}
-          </select>
+          <div className="transaction-form__label-row">
+            <label className="form-label" htmlFor="select-kategori">Kategori</label>
+            <button
+              type="button"
+              className={`transaction-split-toggle${isSplitMode ? ' is-active' : ''}`}
+              onClick={() => setIsSplitMode(!isSplitMode)}
+            >
+              {isSplitMode ? 'Mode split aktif' : 'Pakai split'}
+            </button>
+          </div>
+
+          {!isSplitMode ? (
+            <select
+              id="select-kategori"
+              className="form-select"
+              value={kategori}
+              onChange={e => {
+                setKategori(e.target.value)
+                setErrors(prev => ({ ...prev, kategori: '' }))
+              }}
+            >
+              <option value="">Pilih kategori...</option>
+              {KATEGORI_LIST.map(k => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="transaction-split-callout">
+              <span className="feature-eyebrow">Split aktif</span>
+              <p>Transaksi akan disimpan sebagai beberapa baris sesuai pembagian kategori di panel split.</p>
+            </div>
+          )}
+
           {errors.kategori && <p className="form-error">{errors.kategori}</p>}
         </div>
 
-        {/* Nama Anggota */}
         <div className="form-group">
           <label className="form-label" htmlFor="select-nama">Nama Anggota</label>
           {isAddingAnggota ? (
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="transaction-inline-entry">
               <input
                 type="text"
                 className="form-input"
@@ -207,38 +228,38 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
               />
               <button
                 type="button"
-                className="btn-submit"
-                style={{ width: 'auto', marginTop: 0, padding: '0 16px' }}
+                className="transaction-inline-entry__action"
                 onClick={async () => {
                   const cleanedName = newAnggotaName.trim()
+
                   if (cleanedName) {
                     if (!anggotaList.includes(cleanedName)) {
-                      // Save to DB
                       try {
                         const res = await fetch('/api/anggota', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ nama: cleanedName })
+                          body: JSON.stringify({ nama: cleanedName }),
                         })
+
                         if (res.ok) {
-                          setAnggotaList([...anggotaList, cleanedName])
+                          setAnggotaList(prev => [...prev, cleanedName])
                         }
-                      } catch (err) {
-                        console.error('Failed to save string')
+                      } catch {
+                        console.error('Failed to save anggota')
                       }
                     }
+
                     setNama(cleanedName)
-                    setErrors(p => ({ ...p, nama: '' }))
-                  } else if (nama) {
-                     // revert to previously selected if empty Name
-                  } else {
-                     setNama('')
+                    setErrors(prev => ({ ...prev, nama: '' }))
+                  } else if (!nama) {
+                    setNama('')
                   }
+
                   setIsAddingAnggota(false)
                   setNewAnggotaName('')
                 }}
               >
-                OK
+                Simpan
               </button>
             </div>
           ) : (
@@ -251,7 +272,7 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
                   setIsAddingAnggota(true)
                 } else {
                   setNama(e.target.value)
-                  setErrors(p => ({ ...p, nama: '' }))
+                  setErrors(prev => ({ ...prev, nama: '' }))
                 }
               }}
             >
@@ -259,27 +280,32 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
               {anggotaList.map(n => (
                 <option key={n} value={n}>{n}</option>
               ))}
-              <option value="__add__" style={{ fontStyle: 'italic', color: 'var(--color-accent)' }}>+ Tambah Anggota Baru...</option>
+              <option value="__add__">+ Tambah Anggota Baru...</option>
             </select>
           )}
           {errors.nama && <p className="form-error">{errors.nama}</p>}
         </div>
 
-        {/* Tanggal */}
-        <div className="form-group">
-          <label className="form-label" htmlFor="input-tanggal">Tanggal</label>
-          <input
-            id="input-tanggal"
-            type="date"
-            className="form-input"
-            value={tanggal}
-            onChange={e => setTanggal(e.target.value)}
-            style={{ colorScheme: 'dark' }}
-          />
-          {errors.tanggal && <p className="form-error">{errors.tanggal}</p>}
+        <div className="transaction-form__grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor="input-tanggal">Tanggal</label>
+            <input
+              id="input-tanggal"
+              type="date"
+              className="form-input"
+              value={tanggal}
+              onChange={e => setTanggal(e.target.value)}
+              style={{ colorScheme: 'dark' }}
+            />
+            {errors.tanggal && <p className="form-error">{errors.tanggal}</p>}
+          </div>
+
+          <div className="transaction-form__mini-card">
+            <span className="feature-eyebrow">Mode</span>
+            <strong>{isSplitMode ? 'Split kategori' : 'Satu kategori'}</strong>
+          </div>
         </div>
 
-        {/* Catatan */}
         <div className="form-group">
           <label className="form-label" htmlFor="input-catatan">Catatan (opsional)</label>
           <textarea
@@ -292,18 +318,78 @@ export default function TransactionForm({ onSuccess, onClose, initialAnggota, in
           />
         </div>
 
-        {/* Form-level error */}
-        {errors._form && <p className="form-error" style={{ marginBottom: '8px' }}>{errors._form}</p>}
+        {errors._form && <p className="form-error transaction-form__form-error">{errors._form}</p>}
 
-        <button
-          type="submit"
-          id="btn-submit-transaksi"
-          className="btn-submit"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Menyimpan...' : initialDraft ? 'Simpan Draft' : 'Catat Sekarang'}
-        </button>
+        <div className="transaction-form__actions">
+          <button type="button" className="split-secondary-button" onClick={onClose}>
+            Batal
+          </button>
+          <button
+            type="submit"
+            id="btn-submit-transaksi"
+            className="feature-action"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Menyimpan...' : initialDraft ? 'Simpan Draft' : 'Catat Sekarang'}
+          </button>
+        </div>
       </form>
+
+      {isSplitMode && (
+        <>
+          <div className="overlay" onClick={() => setIsSplitMode(false)} />
+          <SplitTransactionForm
+            totalNominal={parseInt(nominal, 10) || 0}
+            canSubmit={!splitSubmitError}
+            submitError={splitSubmitError}
+            onSubmit={async (splits) => {
+              if (splitSubmitError) {
+                setErrors(prev => ({
+                  ...prev,
+                  nominal: !hasNominal ? 'Nominal wajib diisi' : prev.nominal || '',
+                  nama: !nama.trim() ? 'Pilih atau masukkan nama anggota' : prev.nama || '',
+                  tanggal: !tanggal ? 'Tanggal wajib diisi' : prev.tanggal || '',
+                }))
+                return
+              }
+
+              try {
+                const res = await fetch('/api/add-transaction', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jenis: 'pengeluaran',
+                    nominal: parseInt(nominal, 10),
+                    kategori: 'Lainnya',
+                    nama: nama.trim(),
+                    tanggal,
+                    catatan: catatan.trim(),
+                    isSplit: true,
+                    splits,
+                  }),
+                })
+
+                if (res.ok) {
+                  localStorage.setItem(STORAGE_KEY_NAMA, nama.trim())
+
+                  if (!anggotaList.includes(nama.trim())) {
+                    setAnggotaList(prev => [...prev, nama.trim()])
+                  }
+
+                  setIsSplitMode(false)
+                  onSuccess()
+                } else {
+                  const data = await res.json()
+                  setErrors({ _form: data.error || 'Gagal menyimpan transaksi.' })
+                }
+              } catch {
+                setErrors({ _form: 'Gagal terhubung ke server. Coba lagi.' })
+              }
+            }}
+            onCancel={() => setIsSplitMode(false)}
+          />
+        </>
+      )}
     </div>
   )
 }

@@ -170,6 +170,21 @@ export async function insertTransaction(data: Omit<Transaction, 'id' | 'created_
 }
 
 /**
+ * Insert multiple transaction rows while preserving the input order.
+ */
+export async function insertTransactions(
+  items: Array<Omit<Transaction, 'id' | 'created_at'>>
+): Promise<Transaction[]> {
+  const transactions: Transaction[] = []
+
+  for (const item of items) {
+    transactions.push(await insertTransaction(item))
+  }
+
+  return transactions
+}
+
+/**
  * Delete a transaction by ID
  */
 export async function deleteTransaction(id: number): Promise<boolean> {
