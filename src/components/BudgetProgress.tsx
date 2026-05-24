@@ -125,7 +125,7 @@ export default function BudgetProgress({ initialData = [], onBudgetChange }: Bud
             Belum ada budget yang diatur
           </p>
           <p style={{ color: 'var(--color-text-dim)', fontSize: '0.75rem' }}>
-            Klik "Atur Budget" untuk mulai mengatur limit pengeluaran per kategori
+            Klik &quot;Atur Budget&quot; untuk mulai mengatur limit pengeluaran per kategori
           </p>
         </div>
       ) : (
